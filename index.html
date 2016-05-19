@@ -1,0 +1,490 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<title>Testing in Tryton</title>
+
+		<link rel="stylesheet" href="css/reveal.css">
+		<link rel="stylesheet" href="css/theme/night.css">
+		<link rel="stylesheet" href="css/custom.css">
+
+		<!-- Theme used for syntax highlighting of code -->
+		<link rel="stylesheet" href="lib/css/zenburn.css">
+
+		<!-- Printing and PDF exports -->
+		<script>
+			var link = document.createElement( 'link' );
+			link.rel = 'stylesheet';
+			link.type = 'text/css';
+			link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+			document.getElementsByTagName( 'head' )[0].appendChild( link );
+		</script>
+	</head>
+	<body>
+		<div class="reveal">
+			<div class="slides">
+				<section>
+                    <h1>Testing in Tryton</h1>
+                    <p>Available on: <a target="_blank"
+                        href="http://pokoli.github.io/testing-in-tryton">
+                        http://pokoli.github.io/testing-in-tryton</a></p>
+                </section>
+				<section>
+                    <h2> Who am I?</h2>
+                    <h3 class="fragment enfassis">
+                        Sergi Almacellas Abellana</h3>
+                    <ul>
+                        <li class="fragment">(Python &hearts;) Programmer</li>
+                        <li class="fragment">Open source enthusiast</li>
+                        <li class="fragment">Tryton commiter since Nov 2013
+                        </li>
+                    </ul>
+                </section>
+				<section>
+                    <h2>Why testing?</h2>
+                    <ol class="enfassis">
+                        <li class="fragment">Quality control</li>
+                        <li class="fragment">Find problems early</li>
+                        <li class="fragment">Prevent regressions</li>
+                        <li class="fragment">Code documentation</li>
+                        <li class="fragment">Faster Development</li>
+                        <li class="fragment">Reduce change fear</li>
+                    </ol>
+                </section>
+				<section>
+                    <h2>Test Driven Development</h2>
+                    <ol class="enfassis">
+                        <li class="fragment">Write Test Case</li>
+                        <li class="fragment">Ensure Test Fails</li>
+                        <li class="fragment">Implement Functionality</li>
+                        <li class="fragment">Ensure Test Pass</li>
+                        <li class="fragment">Refractor</li>
+                        <li class="fragment">Ensure Test Pass</li>
+                    </ol>
+                </section>
+				<section>
+                    <h2>Types of testing</h2>
+                    <ul class="enfassis">
+                        <li class="fragment">Unit Testing</li>
+                        <li class="fragment">Scenarios</li>
+                    </ul>
+                    <br/>
+                    <h4 class="fragment">When to use each?</h4>
+                    <ul>
+                        <li class="fragment">
+                            <span>Computations</span>
+                            <span class="fragment enfassis">
+                                &rarr; Unit Testing
+                            </span>
+                         </li>
+                        <li class="fragment">
+                            <span>Workflows & User Interaction</span>
+                            <span class="fragment enfassis">
+                                &rarr; Scenarios
+                            </span>
+                         </li>
+                    </ul>
+                </section>
+				<section>
+                    <h2>Basic Unit Testing</h2>
+                    <pre class="fragment"><code>
+from trytond.tests.test_tryton import ModuleTestCase
+
+
+class AccountTestCase(ModuleTestCase):
+    'Test Account module'
+    module = 'account'
+
+
+def suite():
+    suite = trytond.tests.test_tryton.suite()
+    suite.addTests(unittest.TestLoader().loadTestsFromTestCase(
+        AccountTestCase))
+    return suite
+                    </code></pre>
+                </section>
+				<section>
+                    <h2>Basic Unit Testing</h2>
+                    <h4 class="fragment">13 lines of code</h4>
+                    <h4 class="fragment">Which tests:</h4>
+                    <ul class="enfassis">
+                        <li class="fragment">Module instalation</li>
+                        <li class="fragment">Views validity</li>
+                        <li class="fragment">Fields dependency</li>
+                        <li class="fragment">Menuitem permisions</li>
+                        <li class="fragment">Model access</li>
+                        <li class="fragment">default_* methods</li>
+                        <li class="fragment">order_* methods</li>
+                        <li class="fragment">Workflow transitions</li>
+                        <li class="fragment">Model's rec_name</li>
+                    </ul>
+                </section>
+				<section>
+                    <h2>Real Unitests</h2>
+                    <pre class="fragment"><code>
+from trytond.tests.test_tryton import ModuleTestCase, with_transaction
+from trytond.pool import Pool
+
+from trytond.modules.company.tests import create_company, set_company
+
+
+class ProductPriceListTestCase(ModuleTestCase):
+    'Test ProductPriceList module'
+    module = 'product_price_list'
+
+    @with_transaction()
+    def test_price_list(self):
+        'Test price_list'
+        pool = Pool()
+        Template = pool.get('product.template')
+        Product = pool.get('product.product')
+        Party = pool.get('party.party')
+        Uom = pool.get('product.uom')
+        PriceList = pool.get('product.price_list')
+
+        company = create_company()
+        with set_company(company):
+            party = Party(name='Customer')
+            party.save()
+
+            kilogram, = Uom.search([
+                    ('name', '=', 'Kilogram'),
+                    ])
+            gram, = Uom.search([
+                    ('name', '=', 'Gram'),
+                    ])
+
+            template = Template(
+                name='Test Lot Sequence',
+                list_price=Decimal(10),
+                cost_price=Decimal(5),
+                default_uom=kilogram,
+                )
+            template.save()
+            product = Product(template=template)
+            product.save()
+            variant = Product(template=template)
+            variant.save()
+
+            price_list, = PriceList.create([{
+                        'name': 'Default Price List',
+                        'lines': [('create', [{
+                                        'quantity': 10.0,
+                                        'product': variant.id,
+                                        'formula': 'unit_price * 0.8',
+                                        }, {
+                                        'quantity': 10.0,
+                                        'formula': 'unit_price * 0.9',
+                                        }, {
+                                        'product': variant.id,
+                                        'formula': 'unit_price * 1.1',
+                                        }, {
+                                        'formula': 'unit_price',
+                                        }])],
+                        }])
+            tests = [
+                (product, 1.0, kilogram, Decimal(10.0)),
+                (product, 1000.0, gram, Decimal(10.0)),
+                (variant, 1.0, kilogram, Decimal(11.0)),
+                (product, 10.0, kilogram, Decimal(9.0)),
+                (product, 10000.0, gram, Decimal(9.0)),
+                (variant, 10.0, kilogram, Decimal(8.0)),
+                (variant, 10000.0, gram, Decimal(8.0)),
+                ]
+            for product, quantity, unit, result in tests:
+                self.assertEqual(
+                    price_list.compute(party, product, product.list_price,
+                        quantity, unit),
+                    result)
+                    </code></pre>
+                </section>
+				<section>
+                    <h2>Real Unitests</h2>
+                    <ul class="enfassis">
+                        <li class="fragment">One transaction per unittest</li>
+                        <li class="fragment">Full database setup</li>
+                        <li class="fragment">
+                            With helpers (i.e.: create company)</li>
+                        <li class="fragment">
+                            Standard unittest (self.assertEqual)</li>
+                        <li class="fragment">Run in server side</li>
+                    </ul>
+                </section>
+				<section>
+                    <h2>Scenarios</h2>
+                    <pre class="fragment"><code>
+from trytond.tests.test_tryton import (doctest_setup, doctest_teardown,
+    doctest_checker)
+
+
+def suite():
+    suite = trytond.tests.test_tryton.suite()
+    suite.addTests(unittest.TestLoader().loadTestsFromTestCase(SaleTestCase))
+    suite.addTests(doctest.DocFileSuite('scenario_sale.rst',
+            setUp=doctest_setup, tearDown=doctest_teardown, encoding='utf-8',
+            optionflags=doctest.REPORT_ONLY_FIRST_FAILURE,
+            checker=doctest_checker))
+    return suite
+                    </code></pre>
+                    <li class="fragment">On new database per scenario</li>
+                    <li class="fragment">Standard doctests (rst files)</li>
+                    <li class="fragment">Build using proteus</li>
+                </section>
+				<section>
+                    <h2>Scenarios: Why proteus?</h2>
+                    <h4 class="fragment">Mimics tryton client</h2>
+                    <h3 class="fragment">Allows:</h3>
+                    <ul class="enfassis">
+                        <li class="fragment">Transparently calling on_change
+                        </li>
+                        <li class="fragment">Clicking buttons</li>
+                        <li class="fragment">Execute Wizards</li>
+                        <li class="fragment">Execute reports</li>
+                        <li class="fragment">Check User Permisions</li>
+                    </ul>
+                </section>
+				<section>
+                    <h2>Scenarios Examples</h2>
+                    <h4>Helpers available</h4>
+                    <pre class="fragment"><code>
+
+Create company::
+
+    >>> _ = create_company()
+    >>> company = get_company()
+
+Create chart of accounts::
+
+    >>> _ = create_chart(company)
+    >>> accounts = get_accounts(company)
+    >>> receivable = accounts['receivable']
+    >>> revenue = accounts['revenue']
+    >>> expense = accounts['expense']
+    >>> account_tax = accounts['tax']
+    >>> account_cash = accounts['cash']
+                    </code></pre>
+                </section>
+				<section>
+                    <h2>Scenarios Examples</h2>
+                    <h4>Calling on_change</h4>
+                    <pre class="fragment"><code>
+    >>> Invoice = Model.get('account.invoice')
+    >>> invoice = Invoice()
+    >>> invoice.party = party
+    >>> invoice.payment_term = payment_term
+    >>> invoice.lines.new()
+    >>> line.product = product
+    >>> line.quantity = 5
+    >>> line.unit_price = Decimal('40')
+    >>> invoice.untaxed_amount
+    Decimal('200.00')
+    >>> invoice.tax_amount
+    Decimal('20.00')
+    >>> invoice.total_amount
+    Decimal('220.00')
+    >>> invoice.save()
+                    </code></pre>
+                </section>
+				<section>
+                    <h2>Scenarios Examples</h2>
+                    <h4>Clicking Buttons</h4>
+                    <pre class="fragment"><code>
+    >>> sale.click('quote')
+    >>> sale.click('confirm')
+    >>> sale.click('process')
+    >>> sale.state
+    u'processing'
+    >>> invoice, = sale.invoices
+    >>> invoice.click('post')
+                    </code></pre>
+                </section>
+				<section>
+                    <h2>Scenarios Examples</h2>
+                    <h4>Execute Wizard</h4>
+                    <pre class="fragment"><code>
+    >>> from proteus import Wizard
+    >>> Wizard('ir.module.install_upgrade').execute('upgrade')
+                    </code></pre>
+                    <h4 class="fragment">With forms and models:</h4>
+                    <pre class="fragment"><code>
+    >>> from proteus import Wizard
+    >>> credit = Wizard('account.invoice.credit', [invoice])
+    >>> credit.form.with_refund = True
+    >>> credit.execute('credit')
+                    </code></pre>
+                </section>
+				<section>
+                    <h2>Scenarios Examples</h2>
+                    <h4>Print Reports</h4>
+                    <pre class="fragment"><code>
+    >>> from proteus import config, Model, Wizard, Report
+    >>> GeneralLedgerAccount = Model.get('account.general_ledger.account')
+    >>> gl_accounts = GeneralLedgerAccount.find([])
+    >>> _ = [(l.balance, l.party_required) for gl in gl_accounts
+    ...     for l in gl.lines]
+
+    >>> general_ledger = Report('account.general_ledger', context={
+    ...     'company': company.id,
+    ...     'fiscalyear': fiscalyear.id,
+    ...     })
+    >>> _ = general_ledger.execute(gl_accounts)
+
+    >>> sale_report = Report('sale.sale')
+    >>> ext, _, _, name = sale_report.execute([sale], {})
+    >>> ext
+    u'odt'
+    >>> name
+    u'Sale'
+                    </code></pre>
+                </section>
+				<section>
+                    <h2>Scenarios Examples</h2>
+                    <h4>User permisions</h4>
+                    <pre class="fragment"><code>
+    >>> sale_user = User()
+    >>> stock_user = User()
+
+Create sale::
+
+    >>> config.user = sale_user.id
+    >>> sale = Sale()
+    ...
+    >>> sale.click('process')
+
+Process shipment::
+
+    >>> shipment, = sale.shipments
+    >>> config.user = stock_user.id
+    >>> shipment.click('assign_try')
+    True
+    >>> shipment.click('pack')
+    >>> shipment.click('done')
+                    </code></pre>
+                </section>
+				<section>
+                    <h2>Tox</h2>
+                    <pre class="fragment"><code>
+[tox]
+envlist = {py27,py33,py34,py35}-{sqlite,postgresql,mysql},pypy-{sqlite,postgresql}
+
+[testenv]
+commands = {envpython} setup.py test
+deps =
+    {py27,py33,py34,py35}-postgresql: psycopg2 >= 2.5
+    pypy-postgresql: psycopg2cffi >= 2.5
+    mysql: mysql-python
+setenv =
+    sqlite: trytond_database_uri={env:sqlite_uri:sqlite://}
+    postgresql: trytond_database_uri={env:postgresql_uri:postgresql://}
+    mysql: trytond_database_uri={env:mysql_uri:mysql://}
+    sqlite: db_name={env:sqlite_name::memory:}
+    postgresql: db_name={env:postgresql_name:test}
+    mysql: db_name={env:mysql_name:test}
+install_command = pip install --pre --find-links https://trydevpi.tryton.org/ {opts} {packages}
+                    </code></pre>
+                </section>
+				<section>
+                    <h2>Tox</h2>
+                    <h4 class="fragment">On single command to run on:</h4>
+                    <ul class="enfassis">
+                        <li class="fragment">Multiple databases</li>
+                        <li class="fragment">Multiple python versions</li>
+                        <li class="fragment">
+                        Each Database on Each python version
+                        </li>
+                    </ul>
+                    <h4 class="fragment">Currently testing on: </h4>
+                    <ul class="enfassis">
+                        <li class="fragment">PostgreSQL/SQLite</li>
+                        <li class="fragment">py27,py33,py34,py35</li>
+                    </ul>
+                </section>
+				<section>
+                    <h2>Drone</h2>
+                    <img src="img/drone_modules.png">
+                    <img src="img/drone.png">
+                    <h4 class="fragment"><a href="https://tests.tryon.org/"
+                            target="_blank">
+                            https://drone.tryon.org/
+                    </a></h4>
+                </section>
+				<section>
+                    <h2>Drone</h2>
+                    <h4 class="fragment">.drone.yml file with:</h4>
+                    <pre class="fragment"><code>
+image: python:all
+env:
+  - POSTGRESQL_URI=postgresql://postgres@127.0.0.1:5432/
+  - MYSQL_URI=mysql://root@127.0.0.1:3306/
+script:
+  - pip install tox
+  - tox -e "{py27,py33,py34,py35}-{sqlite,postgresql}" --skip-missing-interpreters
+services:
+  - postgres
+                    </code></pre>
+                    <h4 class="fragment">Executed on a docker container</h4>
+                </section>
+				<section>
+                    <h2>Build Status</h2>
+                    <img src="img/badges.png">
+                    <h4 class="fragment">Based on latest drone result</h4>
+                    <p class="fragment"><a href="https://tests.tryton.org/"
+                            target="_blank">
+                            https://tests.tryton.org/
+                    </a></p>
+                </section>
+				<section>
+                    <h2>Migrating modules to new versions</h2>
+                    <h4 class="fragment">Migrations
+                        <span class="enfassis">&hearts;</span> Tests</h4>
+                    <h4 class="fragment">My steps to migrate to new version:</h4>
+                    <ol class="enfassis">
+                        <li class="fragment">Write tests (if none)</li>
+                        <li class="fragment">Migrate tests (if required)</li>
+                        <li class="fragment">Update dependencies</li>
+                        <li class="fragment">Run tests</li>
+                        <li class="fragment">Fix errors</li>
+                        <li class="fragment">Repeat untill all green</li>
+                    </ol>
+                </section>
+				<section>
+                    <h2>Other improvements:</h2>
+                    <h4 class="fragment">Test Code Quality (pep8, pyflakes)</h4>
+                    <h4 class="fragment">Coverage</h4>
+                </section>
+				<section>
+                    <img src="img/questions.png">
+                </section>
+				<section>
+                    <h1>Thank you!</h1>
+                    <p>The presentation code is avaiable on </p>
+                    <p><a target="_blank"
+                        href="http://github.com/pokoli/testing-in-tryton">
+                        http://github.com/pokoli/testing-in-tryton
+                    </a></p>
+
+                </section>
+			</div>
+		</div>
+
+		<script src="lib/js/head.min.js"></script>
+		<script src="js/reveal.js"></script>
+
+		<script>
+			// More info https://github.com/hakimel/reveal.js#configuration
+			Reveal.initialize({
+				history: true,
+
+				// More info https://github.com/hakimel/reveal.js#dependencies
+				dependencies: [
+					{ src: 'plugin/markdown/marked.js' },
+					{ src: 'plugin/markdown/markdown.js' },
+					{ src: 'plugin/notes/notes.js', async: true },
+					{ src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } }
+				]
+			});
+		</script>
+	</body>
+</html>
